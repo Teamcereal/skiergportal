@@ -341,7 +341,7 @@ class Launcher(tk.Tk):
         left.columnconfigure(0, weight=1)
 
         self.remember_var = tk.BooleanVar(value=bool(read_saved_token()))
-        ttk.Checkbutton(left, text="Husk token lokalt (.streamlit/secrets.toml)", variable=self.remember_var).grid(
+        ttk.Checkbutton(left, text="Husk token lokalt (kun på denne PC-en)", variable=self.remember_var).grid(
             row=4,
             column=0,
             sticky="w",

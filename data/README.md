@@ -17,14 +17,18 @@ Nar en GitHub Release er publisert, last ned `SkiErgPortal-windows-x64.zip` fra 
 
 Launcheren varsler nar en nyere versjon er tilgjengelig. Oppdateringen krever bekreftelse og bevarer brukerdataene i `%LOCALAPPDATA%\SkiErgPortal\Data`. Hvis nettverket er utilgjengelig, kan appen fortsatt brukes.
 
+Concept2 API er standard datakilde. For a huske API-tokenet, skriv det inn i tokenfeltet i GUI-launcheren og huk av **Husk token lokalt** for du starter. Tokenet blir da fylt inn maskert i API-feltet i portalen. Token skrevet bare i portalens sidefelt blir ikke lagret. CSV kan fortsatt velges manuelt under Datakilde.
+
 ## Legg til dine data
 
 Velg en av datakildene i appen:
 
 - Eksporter Concept2 Logbook-data som CSV og legg filene i `%LOCALAPPDATA%\SkiErgPortal\Data\` med navn som `concept2-season-2026.csv`.
-- Oppgi din egen read-only Concept2 access token i portalen for a hente data fra API-et. Tokenet lagres ikke av portalen.
+- Concept2 API er standard. Skriv read-only-tokenet i GUI-launcheren og huk av **Husk token lokalt** hvis du vil at det skal brukes igjen neste gang. Et token skrevet bare i Streamlit-sidebaren lagres ikke.
 
 Alle data lagres bare lokalt pa din maskin. Launcheren flytter eksisterende filer fra `data/system/Data/` til `%LOCALAPPDATA%\SkiErgPortal\Data\` ved forste oppstart. Denne mappen ligger utenfor appinstallasjonen, sa CSV-filer, kommentarer, laktat, vekt, cache og token overlever oppgraderinger.
+
+API-resultater mellomlagres i `api_cache_skierg.json` i `%LOCALAPPDATA%\SkiErgPortal\Data\` og gjenbrukes ved senere oppstarter.
 
 ## Manuell oppstart
 

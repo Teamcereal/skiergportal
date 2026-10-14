@@ -75,7 +75,9 @@ if ($actual -ne $expected) { throw "SHA-256 mismatch" }
 - [ ] Extract the app ZIP to a writable test folder such as `%LOCALAPPDATA%\Programs\SkiErgPortal`. Do not extract it into `%LOCALAPPDATA%\SkiErgPortal`, which is reserved for user data, and do not move the EXE out of the package.
 - [ ] Test on a separate Windows 10/11 x64 machine or a clean Windows user profile. The app should run without separately installing Python or uv and without administrator privileges.
 - [ ] Start `SkiErgPortal.exe`. Confirm the launcher opens, **Start** starts Streamlit, the browser reaches `http://localhost:8501`, and the main page renders without a server startup error.
+- [ ] On a fresh app start, confirm **Concept2 API** is selected by default. Enter a test token in the launcher's token field, check **Husk token lokalt**, start the portal, and confirm the token is prefilled but masked in the API field. The checkbox does not save a token typed only in Streamlit's sidebar. Confirm CSV can still be selected manually.
 - [ ] Exercise the views and workflows changed by the PR using a copy of test CSV data. Confirm charts, filters, and relevant controls behave as expected; do not use the only copy of real training data.
+- [ ] Confirm API data is persisted in `api_cache_skierg.json` under `%LOCALAPPDATA%\SkiErgPortal\Data`. Close and reopen the app and confirm the token stays masked/prefilled and cached workouts are reused.
 - [ ] Confirm files created by the app are under `%LOCALAPPDATA%\SkiErgPortal\Data`, not inside the extracted application folder. Close and reopen the app and confirm the test data/settings persist.
 - [ ] Exercise **Stop**, close the launcher, and start it again. Confirm there is no stale Streamlit process or port conflict.
 - [ ] Disable network access temporarily and launch the app. The portal must remain usable even if update checking fails; restore network access afterwards.

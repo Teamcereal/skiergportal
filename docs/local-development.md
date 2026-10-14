@@ -42,6 +42,8 @@ Open port `8502` from the VS Code **Ports** view. Streamlit hot reload works the
 
 - `SKIERGPORTAL_DATA_DIR` redirects the app's data reads/writes to a disposable development folder. Use copies of CSV files, never the only copy of real training data.
 - The Windows GUI launcher uses `%LOCALAPPDATA%\SkiErgPortal\Data`. If you test the source launcher, set `LOCALAPPDATA` to a temporary profile first, as shown below.
+- Concept2 API is the default data source. To test a remembered token, enter it in the GUI launcher's token field and check **Husk token lokalt** before starting. That checkbox does not save a token entered only in Streamlit's sidebar. The source app receives the launcher's saved token through `CONCEPT2_ACCESS_TOKEN` and initializes the masked API field from it.
+- API sessions are persisted in `api_cache_skierg.json` under the configured data directory. On restart, the API list is refreshed incrementally and cached workout details are reused.
 - Do not commit CSV files, tokens, `.streamlit/secrets.toml`, or test output. Use a dedicated read-only Concept2 test token only when API behavior is part of the change.
 - The first public stable release may not exist during development. In that case, the update check can report that it could not find a release; this must not block the portal from starting.
 
@@ -63,7 +65,7 @@ This starts the source launcher and its development Streamlit server on port `85
 Run from `data/system`:
 
 ```powershell
-uv run --frozen python -m unittest discover -s . -p "test_*update*.py"
+uv run --frozen python -m unittest discover -s . -p "test_*.py"
 uv run --frozen python -m py_compile Start-Treningshistorikk-GUI.pyw release_updates.py app_update_helper.py skiergportal_version.py
 ```
 

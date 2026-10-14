@@ -30,7 +30,7 @@ jobs:
         run: uv sync --project data/system --frozen --group build
 
       - name: Test release and update code
-        run: uv run --project data/system --frozen --group build python -m unittest discover -s data/system -p 'test_*update*.py'
+        run: uv run --project data/system --frozen --group build python -m unittest discover -s data/system -p 'test_*.py'
 
       - name: Validate release tag
         if: github.event_name == 'push'

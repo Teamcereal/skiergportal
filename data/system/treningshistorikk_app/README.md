@@ -40,7 +40,7 @@ CSV-filer kan lastes opp for den aktive nettleserøkten. Opplastede filer lagres
 
 ### Concept2 API
 
-Velg **Concept2 API** i sidepanelet og legg inn en personlig, read-only access token. Tokenet blir ikke forhåndsutfylt eller lagret av portalen.
+Concept2 API er valgt som standard. Via GUI-launcheren skrives en personlig, read-only access token inn i launcherens tokenfelt. Hvis **Husk token lokalt** er valgt, fyller launcheren tokenet inn maskert i portalens API-felt ved oppstart. Et token skrevet bare i Streamlit-sidepanelet lagres ikke.
 
 API-resultater mellomlagres lokalt i `api_cache_skierg.json` i datamappen for raskere senere oppstart.
 
@@ -48,7 +48,7 @@ API-resultater mellomlagres lokalt i `api_cache_skierg.json` i datamappen for ra
 
 Lokale CSV-filer, API-cache, innstillinger, kommentarer, tagger, laktat og vektdata ligger i datamappen. Via launcheren lagres disse utenfor appinstallasjonen, slik at de overlever oppgraderinger. Ikke commit private data eller token til Git.
 
-Ikke lagre token i kode, Streamlit-konfigurasjon eller filer som deles. Tokenet oppgis manuelt for den aktive portaløkten.
+Ikke lagre token i kode, Streamlit-konfigurasjon eller filer som deles. Launcherens valg for tokenlagring lagrer det bare lokalt på denne PC-en i brukerens datamappe; del aldri denne mappen. Ved direkte terminaloppstart kan `CONCEPT2_ACCESS_TOKEN` brukes til å forhåndsutfylle tokenfeltet, ellers oppgis tokenet kun for portaløkten.
 
 ## Avhengigheter
 

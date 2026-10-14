@@ -3355,7 +3355,7 @@ def main() -> None:
             data_source = st.radio(
                 "Velg datakilde",
                 ["CSV (system/Data)", "Concept2 API"],
-                index=0,
+                index=1,
                 horizontal=True,
             )
 
@@ -3414,7 +3414,7 @@ def main() -> None:
 
                 api_token = st.text_input(
                     "Access token",
-                    value="",
+                    value=os.getenv("CONCEPT2_ACCESS_TOKEN", ""),
                     type="password",
                     key="api_token_input",
                 )
