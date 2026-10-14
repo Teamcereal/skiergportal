@@ -47,7 +47,7 @@ jobs:
           --collect-all st_aggrid
           --collect-all plotly
           --collect-all PIL
-          --add-data "data/system/treningshistorikk_app;app"
+          --add-data "../treningshistorikk_app;app"
           data/system/streamlit_server.py
 
       - name: Include usage instructions
