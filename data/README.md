@@ -11,6 +11,12 @@ Lokal Streamlit-app for analyse av SkiErg-okter fra Concept2 Logbook.
 
 Appen apner normalt i nettleseren pa `http://localhost:8501`.
 
+## Last ned Windows-versjonen
+
+Nar en GitHub Release er publisert, last ned `SkiErgPortal-windows-x64.zip` fra [siste release](https://github.com/Teamcereal/skiergportal/releases/latest). Pakk ut hele ZIP-filen til en skrivbar mappe, for eksempel `%LOCALAPPDATA%\Programs\SkiErgPortal`, og start `SkiErgPortal.exe` derfra. Ikke pakk appen ut i `%LOCALAPPDATA%\SkiErgPortal`, som er reservert for brukerdata, og ikke flytt ut EXE-filen alene.
+
+Launcheren varsler nar en nyere versjon er tilgjengelig. Oppdateringen krever bekreftelse og bevarer brukerdataene i `%LOCALAPPDATA%\SkiErgPortal\Data`. Hvis nettverket er utilgjengelig, kan appen fortsatt brukes.
+
 ## Legg til dine data
 
 Velg en av datakildene i appen:
@@ -34,4 +40,6 @@ F&#248;r du publiserer egne endringer, kontroller at lokale brukerdata og `data/
 
 ## Windows-bygg
 
-GitHub Actions-workflowen `Windows build` kan startes manuelt fra fanen Actions. Den bygger en PyInstaller `--onedir`-distribusjon, starter Streamlit pa en Windows-runner for en helsesjekk og laster opp `SkiErgPortal-windows-x64` som artifact. Pakk ut hele mappen og start `SkiErgPortal.exe`. Brukerdata lagres separat i `%LOCALAPPDATA%\SkiErgPortal\Data` og blir ikke pakket inn i bygget.
+GitHub Actions-workflowen `Windows build` kan startes manuelt fra fanen Actions for testing. Den bygger en ZIP og checksum, starter Streamlit pa en Windows-runner for en helsesjekk og laster opp `SkiErgPortal-windows-x64` som artifact.
+
+For a publisere en release: oppdater versjonen i `data/system/skiergportal_version.py`, merge endringen til `main`, og push en tilsvarende tag, for eksempel `v0.2.0`. Workflowen avviser tagger som ikke matcher versjonen, og oppretter en GitHub Release med ZIP og SHA-256 etter bestatt build og smoke tests.

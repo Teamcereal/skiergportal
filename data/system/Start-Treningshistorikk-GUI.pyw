@@ -9,6 +9,9 @@ import threading
 import webbrowser
 from pathlib import Path
 
+from release_updates import Release, ReleaseCheckError, download_release, fetch_latest_release, is_newer_release
+from skiergportal_version import __version__
+
 try:
     import tkinter as tk
     from tkinter import messagebox, ttk
@@ -221,6 +224,8 @@ class Launcher(tk.Tk):
 
         self.title("Treningshistorikk")
         self.resizable(False, False)
+        self._available_release: Release | None = None
+        self._checking_for_updates = False
 
         # A minimal modern palette.
         self._bg = "#0b1220"
@@ -230,7 +235,7 @@ class Launcher(tk.Tk):
         self._accent = "#4f7cff"
 
         self.configure(bg=self._bg)
-        _center_window(self, 640, 360)
+        _center_window(self, 640, 440)
 
         style = ttk.Style(self)
         try:
@@ -358,6 +363,13 @@ class Launcher(tk.Tk):
             fill=tk.X, pady=(10, 0)
         )
         ttk.Button(right, text="Vis logg", style="Secondary.TButton", command=self.show_log).pack(fill=tk.X, pady=(10, 0))
+        self.update_status_var = tk.StringVar(value=f"Versjon {__version__}")
+        ttk.Label(right, textvariable=self.update_status_var, style="CardText.TLabel", wraplength=180).pack(
+            anchor="w",
+            pady=(14, 4),
+        )
+        self.update_btn = ttk.Button(right, text="Se etter oppdateringer", style="Secondary.TButton", command=self.check_for_updates)
+        self.update_btn.pack(fill=tk.X)
 
         # Status
         self.status_var = tk.StringVar(value="Klar")
@@ -372,6 +384,7 @@ class Launcher(tk.Tk):
         self._progressbar.pack(fill=tk.X)
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.after(700, self.check_for_updates)
 
     def set_status(self, text: str) -> None:
         self.status_var.set(text)
@@ -385,6 +398,122 @@ class Launcher(tk.Tk):
         self._progressbar.stop()
         self._progressbar["value"] = 0
         self.update_idletasks()
+
+    def check_for_updates(self) -> None:
+        if self._checking_for_updates:
+            return
+        self._checking_for_updates = True
+        self.update_status_var.set("Sjekker etter oppdateringer …")
+        self.update_btn.configure(state=tk.DISABLED, text="Sjekker …")
+
+        def worker() -> None:
+            try:
+                release = fetch_latest_release()
+                update = release if is_newer_release(__version__, release) else None
+                self.after(0, lambda: self._finish_update_check(update))
+            except Exception as exc:
+                message = str(exc)
+                self.after(0, lambda: self._fail_update_check(message))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _finish_update_check(self, release: Release | None) -> None:
+        self._checking_for_updates = False
+        self._available_release = release
+        self.update_btn.configure(state=tk.NORMAL)
+        if release is None:
+            self.update_status_var.set(f"Du har siste versjon ({__version__})")
+            self.update_btn.configure(text="Se etter oppdateringer", command=self.check_for_updates)
+            return
+        self.update_status_var.set(f"Versjon {release.version} er tilgjengelig")
+        self.update_btn.configure(text=f"Oppdater til {release.version}", command=self.begin_update)
+
+    def _fail_update_check(self, message: str) -> None:
+        self._checking_for_updates = False
+        self._available_release = None
+        self.update_status_var.set("Kunne ikke sjekke nå; appen kan fortsatt brukes")
+        self.update_btn.configure(state=tk.NORMAL, text="Prøv på nytt", command=self.check_for_updates)
+
+    def begin_update(self) -> None:
+        release = self._available_release
+        if release is None:
+            self.check_for_updates()
+            return
+        if not FROZEN:
+            messagebox.showinfo("Oppdatering", "Oppdatering er tilgjengelig i den pakkede Windows-versjonen.")
+            return
+        if not messagebox.askyesno(
+            "Oppdatering tilgjengelig",
+            f"SkiErgPortal {release.version} er tilgjengelig.\n\n{release.notes[:1600]}\n\nVil du laste ned og installere oppdateringen nå?",
+        ):
+            return
+
+        self.update_btn.configure(state=tk.DISABLED, text="Laster ned …")
+        self.update_status_var.set("Laster ned oppdateringen …")
+        update_dir = USER_DATA_ROOT / "SkiErgPortal" / "Updates"
+        last_reported = 0
+
+        def progress(downloaded: int, total: int | None) -> None:
+            nonlocal last_reported
+            if downloaded - last_reported < 10 * 1024 * 1024 and total is not None and downloaded < total:
+                return
+            last_reported = downloaded
+            if total:
+                status = f"Laster ned: {downloaded // (1024 * 1024)} / {total // (1024 * 1024)} MB"
+            else:
+                status = f"Laster ned: {downloaded // (1024 * 1024)} MB"
+            self.after(0, lambda: self.update_status_var.set(status))
+
+        def worker() -> None:
+            try:
+                package_path, package_hash = download_release(release, update_dir, progress_callback=progress)
+                self.after(0, lambda: self._start_update_helper(release, package_path, package_hash, update_dir))
+            except Exception as exc:
+                message = str(exc)
+                self.after(0, lambda: self._update_download_failed(message))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _update_download_failed(self, message: str) -> None:
+        self.update_status_var.set("Nedlastingen feilet")
+        self.update_btn.configure(state=tk.NORMAL, text="Prøv oppdateringen på nytt", command=self.begin_update)
+        messagebox.showerror("Oppdatering", message)
+
+    def _start_update_helper(self, release: Release, package_path: Path, package_hash: str, update_dir: Path) -> None:
+        updater_source = ROOT / "SkiErgPortalUpdater.exe"
+        if not updater_source.is_file():
+            self._update_download_failed("Fant ikke den pakkede oppdateringshjelperen.")
+            return
+        try:
+            update_dir.mkdir(parents=True, exist_ok=True)
+            updater_copy = update_dir / f"SkiErgPortalUpdater-{release.version}.exe"
+            shutil.copy2(updater_source, updater_copy)
+            subprocess.Popen(
+                [
+                    str(updater_copy),
+                    "--install-dir",
+                    str(ROOT),
+                    "--archive",
+                    str(package_path),
+                    "--sha256",
+                    package_hash,
+                    "--version",
+                    release.version,
+                    "--parent-pid",
+                    str(os.getpid()),
+                    "--data-dir",
+                    str(DATA_DIR),
+                ],
+                cwd=str(update_dir),
+                creationflags=CREATE_NO_WINDOW,
+            )
+        except OSError as exc:
+            self._update_download_failed(f"Kunne ikke starte oppdateringshjelperen: {exc}")
+            return
+
+        self.update_status_var.set("Installerer oppdatering …")
+        self.stop()
+        self.destroy()
 
     def start(self) -> None:
         if self.proc and self.proc.poll() is None:
