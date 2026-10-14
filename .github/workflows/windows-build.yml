@@ -1,0 +1,100 @@
+name: Windows build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install locked build dependencies
+        run: uv sync --project data/system --frozen --group build
+
+      - name: Build GUI launcher
+        run: >-
+          uv run --project data/system --frozen --group build pyinstaller
+          --clean --noconfirm --onedir --windowed
+          --name SkiErgPortal
+          --distpath data/system/dist
+          --workpath data/system/build/launcher
+          --specpath data/system/build
+          data/system/Start-Treningshistorikk-GUI.pyw
+
+      - name: Build Streamlit server
+        run: >-
+          uv run --project data/system --frozen --group build pyinstaller
+          --clean --noconfirm --onedir
+          --contents-directory .
+          --name streamlit_server
+          --distpath data/system/dist/SkiErgPortal
+          --workpath data/system/build/streamlit-server
+          --specpath data/system/build
+          --collect-all streamlit
+          --collect-all st_aggrid
+          --collect-all plotly
+          --collect-all PIL
+          --add-data "data/system/treningshistorikk_app;app"
+          data/system/streamlit_server.py
+
+      - name: Include usage instructions
+        run: Copy-Item data/README.md data/system/dist/SkiErgPortal/README.md
+
+      - name: Smoke test packaged application
+        shell: pwsh
+        run: |
+          $appRoot = (Resolve-Path data/system/dist/SkiErgPortal).Path
+          if (Test-Path (Join-Path $appRoot "Data")) {
+            throw "Writable training data must not be packaged with the application."
+          }
+          $env:SKIERGPORTAL_DATA_DIR = Join-Path $env:LOCALAPPDATA "SkiErgPortal\SmokeData"
+          New-Item -ItemType Directory -Force -Path $env:SKIERGPORTAL_DATA_DIR | Out-Null
+          & (Join-Path $appRoot "SkiErgPortal.exe") --smoke-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged launcher smoke test failed." }
+
+          $serverExe = Join-Path $appRoot "streamlit_server\streamlit_server.exe"
+          & $serverExe --version
+          if ($LASTEXITCODE -ne 0) { throw "Packaged Streamlit CLI smoke test failed." }
+          $appScript = Join-Path $appRoot "streamlit_server\app\app.py"
+          $server = $null
+          try {
+            $server = Start-Process -FilePath $serverExe -ArgumentList @(
+              "run", $appScript, "--server.address", "127.0.0.1",
+              "--server.port", "8765", "--server.headless", "true"
+            ) -WorkingDirectory $env:SKIERGPORTAL_DATA_DIR -PassThru -WindowStyle Hidden
+            $ready = $false
+            for ($attempt = 0; $attempt -lt 45; $attempt++) {
+              if ($server.HasExited) { throw "Packaged Streamlit server exited during startup." }
+              try {
+                $response = Invoke-WebRequest -Uri "http://127.0.0.1:8765/_stcore/health" -TimeoutSec 2
+                if ($response.StatusCode -eq 200) { $ready = $true; break }
+              } catch { Start-Sleep -Seconds 1 }
+            }
+            if (-not $ready) { throw "Packaged Streamlit health endpoint did not become ready." }
+          } finally {
+            if ($server -and -not $server.HasExited) {
+              Stop-Process -Id $server.Id -Force
+              Wait-Process -Id $server.Id -ErrorAction SilentlyContinue
+            }
+          }
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkiErgPortal-windows-x64
+          path: data/system/dist/SkiErgPortal/
+          if-no-files-found: error
+          retention-days: 14

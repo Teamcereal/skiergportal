@@ -68,6 +68,12 @@ _STANDARD_SESSION_TAGS = [
 
 
 def _find_data_dir(start: Path) -> Path:
+    configured_dir = os.environ.get("SKIERGPORTAL_DATA_DIR")
+    if configured_dir:
+        data_dir = Path(configured_dir).expanduser()
+        data_dir.mkdir(parents=True, exist_ok=True)
+        return data_dir
+
     if start.is_file():
         start = start.parent
 
