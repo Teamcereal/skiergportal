@@ -34,6 +34,8 @@ uv sync --frozen
 uv run --frozen streamlit run treningshistorikk_app/app.py
 ```
 
+For lokal utvikling med hot reload og isolerte testdata, se [Local development](../docs/local-development.md). For Windows-test for merge og planlagt iOS-forstudie, se [release- og plattformplanen](../docs/windows-releases-and-updates.md).
+
 ## Personvern ved videreutvikling
 
 F&#248;r du publiserer egne endringer, kontroller at lokale brukerdata og `data/system/.streamlit/secrets.toml` ikke er med i commit-en. Bruk aldri en API-token i kildekode eller i filer som skal deles.

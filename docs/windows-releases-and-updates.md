@@ -1,5 +1,7 @@
 # Windows Releases and One-Click Updates
 
+# App Releases, Updates, and iOS Roadmap
+
 ## Goal
 
 Make SkiErgPortal straightforward to download and keep current without changing the existing training-data format, calculations, or Streamlit application behavior.
@@ -58,12 +60,73 @@ An updater process separate from the running GUI and Streamlit server performs t
 
 ### 5. Verify before public launch
 
-- [ ] Test a clean install from the release ZIP on a Windows machine.
-- [ ] Test an upgrade from the previous version while retaining CSV files, settings, tokens, and other user data.
-- [ ] Test that a current version reports up to date and an offline check leaves the app usable.
-- [ ] Test that a wrong checksum, invalid ZIP, interrupted download, or failed replacement does not damage the installed app or user data.
-- [ ] Test that the updater can replace files while the GUI and Streamlit server are running, then relaunches the new version.
-- [ ] Publish the first public release only after the release ZIP has passed these tests.
+#### Windows test before merging the release PR
+
+- [ ] In Actions, run `Windows build` on the PR branch. Confirm the run's branch and head SHA match the latest PR commit, and that build, updater tests, smoke test, ZIP packaging, and artifact upload all pass.
+- [ ] Download the run artifact `SkiErgPortal-windows-x64` and extract the artifact bundle. It contains the app package `SkiErgPortal-windows-x64.zip` and `SkiErgPortal-windows-x64.zip.sha256`.
+- [ ] Verify the app ZIP before extracting it:
+
+```powershell
+$expected = (Get-Content .\SkiErgPortal-windows-x64.zip.sha256 -Raw).Trim().Split()[0]
+$actual = (Get-FileHash .\SkiErgPortal-windows-x64.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "SHA-256 mismatch" }
+```
+
+- [ ] Extract the app ZIP to a writable test folder such as `%LOCALAPPDATA%\Programs\SkiErgPortal`. Do not extract it into `%LOCALAPPDATA%\SkiErgPortal`, which is reserved for user data, and do not move the EXE out of the package.
+- [ ] Test on a separate Windows 10/11 x64 machine or a clean Windows user profile. The app should run without separately installing Python or uv and without administrator privileges.
+- [ ] Start `SkiErgPortal.exe`. Confirm the launcher opens, **Start** starts Streamlit, the browser reaches `http://localhost:8501`, and the main page renders without a server startup error.
+- [ ] Exercise the views and workflows changed by the PR using a copy of test CSV data. Confirm charts, filters, and relevant controls behave as expected; do not use the only copy of real training data.
+- [ ] Confirm files created by the app are under `%LOCALAPPDATA%\SkiErgPortal\Data`, not inside the extracted application folder. Close and reopen the app and confirm the test data/settings persist.
+- [ ] Exercise **Stop**, close the launcher, and start it again. Confirm there is no stale Streamlit process or port conflict.
+- [ ] Disable network access temporarily and launch the app. The portal must remain usable even if update checking fails; restore network access afterwards.
+- [ ] Record the Windows version, tested commit SHA, workflow run URL, checksum result, test data used, and any error/log output before marking the PR ready.
+
+Before the first stable GitHub Release exists, the update check has no stable version to compare against. A non-blocking "could not check" state is expected; it must not prevent the current app from starting. Do not treat an Actions artifact as a published release.
+
+#### Update installation test before broad distribution
+
+- [ ] Test a current-version result and an offline update check.
+- [ ] Test a real upgrade from an older version using a controlled staging release or a dedicated test repository; do not publish a fake stable version to the public release channel just to test.
+- [ ] Confirm the updater reports progress, closes the launcher/server, installs the new version, and relaunches it.
+- [ ] Confirm CSV files, settings, tokens, and other user data remain unchanged after the upgrade.
+- [ ] Test a wrong checksum, invalid ZIP, interrupted download, missing file, and failed new-version smoke test. Each case must keep the previous app usable and provide an actionable error.
+- [ ] Publish the first public stable release only after the Windows package and the update path have passed their applicable tests.
+
+#### Release acceptance criteria
+
+- [ ] A user can download one ZIP from GitHub Releases and run `SkiErgPortal.exe` from the extracted application folder.
+- [ ] The launcher identifies a newer stable release and offers a clearly labeled, user-confirmed update.
+- [ ] A successful update replaces the application, restarts it, and preserves all user data.
+- [ ] Failed or invalid updates leave the previous application usable and provide an actionable error.
+- [ ] The release workflow publishes nothing unless tag validation, build, package checks, and runtime smoke tests all pass.
+
+## iOS roadmap (planning only)
+
+No iOS build is part of the current Windows release/update implementation. The existing Tkinter launcher, Streamlit runtime, and PyInstaller Windows bundle cannot be turned directly into an iOS `.ipa`; iOS needs a different application/runtime and distribution path.
+
+#### 0. Requirements and architecture decision
+
+- [ ] Decide whether iOS means a mobile website/PWA opened in Safari or a native iPhone app distributed through TestFlight/App Store.
+- [ ] Define required offline behavior, CSV import/export, Concept2 API access, token handling, comments/settings, and whether data must stay only on the user's device.
+- [ ] Compare a hosted mobile web app (more reuse of Streamlit, but requires an HTTPS service, authentication, and an explicit server-side data policy) with a native SwiftUI client (better iOS integration, but requires a backend/API or a deliberate port of app logic).
+- [ ] Reject a direct Tkinter/PyInstaller-to-iOS packaging assumption; test any alternative Python UI framework in a small throwaway spike before committing to it.
+- [ ] Write down the chosen architecture, data flows, threat model, hosting costs, and expected maintenance before implementation.
+
+#### 1. Build and distribution preparation
+
+- [ ] Identify required Apple hardware/tooling: macOS with Xcode, signing identities, provisioning profiles, and an Apple Developer account for TestFlight/App Store distribution.
+- [ ] Define secure token storage (Keychain for native), user consent, data deletion/export, and privacy disclosures before connecting Concept2 accounts.
+- [ ] Decide how to reuse or port calculations and how a client talks to any service; add API contracts and versioning before UI implementation.
+- [ ] Design iPhone-sized layouts and accessibility states for loading, empty data, offline, API errors, and token expiry.
+- [ ] Add iOS unit/UI tests and a macOS CI lane only after the architecture is approved.
+
+#### 2. Device validation and release
+
+- [ ] Test on supported physical iPhone/iOS versions, including CSV file import, secure token handling, accessibility, offline behavior, and data persistence.
+- [ ] Validate App Store privacy declarations, signing, TestFlight feedback, upgrade behavior, and recovery from failed releases.
+- [ ] Publish an iOS build only after product, privacy, architecture, device-test, and distribution checks are approved.
+
+The next iOS action is requirements/architecture discovery only. Do not add an iOS build job or change the current Windows release flow until those decisions are recorded.
 
 ## Security and Operational Rules
 
