@@ -112,8 +112,16 @@ jobs:
 
           $env:SKIERGPORTAL_DATA_DIR = Join-Path $env:LOCALAPPDATA "SkiErgPortal\SmokeData"
           New-Item -ItemType Directory -Force -Path $env:SKIERGPORTAL_DATA_DIR | Out-Null
+          $smokeLog = Join-Path $env:TEMP "SkiErgPortal-launcher-smoke.log"
+          Remove-Item -LiteralPath $smokeLog -Force -ErrorAction SilentlyContinue
+          $env:SKIERGPORTAL_SMOKE_LOG = $smokeLog
           & $launcherExe --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged launcher smoke test failed." }
+          $launcherExitCode = $LASTEXITCODE
+          Remove-Item Env:SKIERGPORTAL_SMOKE_LOG -ErrorAction SilentlyContinue
+          if ($launcherExitCode -ne 0) {
+            if (Test-Path -LiteralPath $smokeLog) { Get-Content -LiteralPath $smokeLog }
+            throw "Packaged launcher smoke test failed with exit code $launcherExitCode."
+          }
 
           $server = $null
           try {
