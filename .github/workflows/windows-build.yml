@@ -124,20 +124,33 @@ jobs:
           }
 
           $server = $null
+          $serverStdout = Join-Path $env:TEMP "SkiErgPortal-streamlit.stdout.log"
+          $serverStderr = Join-Path $env:TEMP "SkiErgPortal-streamlit.stderr.log"
+          Remove-Item -LiteralPath $serverStdout, $serverStderr -Force -ErrorAction SilentlyContinue
           try {
             $server = Start-Process -FilePath $serverExe -ArgumentList @(
               "run", $appScript, "--server.address", "127.0.0.1",
-              "--server.port", "8765", "--server.headless", "true"
-            ) -WorkingDirectory $env:SKIERGPORTAL_DATA_DIR -PassThru -WindowStyle Hidden
+              "--server.port", "8765", "--server.headless", "true",
+              "--global.developmentMode=false"
+            ) -WorkingDirectory $env:SKIERGPORTAL_DATA_DIR -PassThru -WindowStyle Hidden `
+              -RedirectStandardOutput $serverStdout -RedirectStandardError $serverStderr
             $ready = $false
             for ($attempt = 0; $attempt -lt 45; $attempt++) {
-              if ($server.HasExited) { throw "Packaged Streamlit server exited during startup." }
+              if ($server.HasExited) {
+                if (Test-Path -LiteralPath $serverStdout) { Get-Content -LiteralPath $serverStdout }
+                if (Test-Path -LiteralPath $serverStderr) { Get-Content -LiteralPath $serverStderr }
+                throw "Packaged Streamlit server exited during startup."
+              }
               try {
                 $response = Invoke-WebRequest -Uri "http://127.0.0.1:8765/_stcore/health" -TimeoutSec 2
                 if ($response.StatusCode -eq 200) { $ready = $true; break }
               } catch { Start-Sleep -Seconds 1 }
             }
-            if (-not $ready) { throw "Packaged Streamlit health endpoint did not become ready." }
+            if (-not $ready) {
+              if (Test-Path -LiteralPath $serverStdout) { Get-Content -LiteralPath $serverStdout }
+              if (Test-Path -LiteralPath $serverStderr) { Get-Content -LiteralPath $serverStderr }
+              throw "Packaged Streamlit health endpoint did not become ready."
+            }
           } finally {
             if ($server -and -not $server.HasExited) {
               Stop-Process -Id $server.Id -Force

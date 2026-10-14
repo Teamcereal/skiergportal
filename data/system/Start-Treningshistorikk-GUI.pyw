@@ -417,7 +417,7 @@ class Launcher(tk.Tk):
                     env["CONCEPT2_ACCESS_TOKEN"] = token
 
                 if FROZEN:
-                    cmd = [str(STREAMLIT_EXE), "run", str(APP)]
+                    cmd = [str(STREAMLIT_EXE), "run", str(APP), "--global.developmentMode=false"]
                 else:
                     cmd = [str(VENV_PY), "-m", "streamlit", "run", str(APP)]
                 cmd.extend(
