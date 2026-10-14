@@ -417,7 +417,7 @@ class Launcher(tk.Tk):
                     env["CONCEPT2_ACCESS_TOKEN"] = token
 
                 if FROZEN:
-                    cmd = [str(STREAMLIT_EXE), "run", str(APP)]
+                    cmd = [str(STREAMLIT_EXE), "run", str(APP), "--global.developmentMode=false"]
                 else:
                     cmd = [str(VENV_PY), "-m", "streamlit", "run", str(APP)]
                 cmd.extend(
@@ -530,5 +530,15 @@ def smoke_test() -> int:
 
 if __name__ == "__main__":
     if "--smoke-test" in sys.argv:
-        raise SystemExit(smoke_test())
+        try:
+            smoke_exit_code = smoke_test()
+        except (Exception, SystemExit) as exc:
+            smoke_log = os.environ.get("SKIERGPORTAL_SMOKE_LOG")
+            if smoke_log:
+                try:
+                    Path(smoke_log).write_text(f"{type(exc).__name__}: {exc}\n", encoding="utf-8")
+                except OSError:
+                    pass
+            raise
+        raise SystemExit(smoke_exit_code)
     Launcher().mainloop()

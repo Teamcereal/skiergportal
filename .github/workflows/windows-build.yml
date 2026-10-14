@@ -24,31 +24,68 @@ jobs:
       - name: Install locked build dependencies
         run: uv sync --project data/system --frozen --group build
 
+      - name: Prepare build directories
+        shell: pwsh
+        run: |
+          $systemRoot = Join-Path $env:GITHUB_WORKSPACE "data/system"
+          $buildRoot = Join-Path $systemRoot "build"
+          $distRoot = Join-Path $systemRoot "dist"
+          Remove-Item -LiteralPath $buildRoot, $distRoot -Recurse -Force -ErrorAction SilentlyContinue
+          $buildPaths = @(
+            (Join-Path $buildRoot "launcher/spec"),
+            (Join-Path $buildRoot "launcher/work"),
+            (Join-Path $buildRoot "server/spec"),
+            (Join-Path $buildRoot "server/work"),
+            $distRoot
+          )
+          New-Item -ItemType Directory -Force -Path $buildPaths | Out-Null
+
       - name: Build GUI launcher
-        run: >-
-          uv run --project data/system --frozen --group build pyinstaller
-          --clean --noconfirm --onedir --windowed
-          --name SkiErgPortal
-          --distpath data/system/dist
-          --workpath data/system/build/launcher
-          --specpath data/system/build
-          data/system/Start-Treningshistorikk-GUI.pyw
+        shell: pwsh
+        run: |
+          $systemRoot = Join-Path $env:GITHUB_WORKSPACE "data/system"
+          $launcherSource = Join-Path $systemRoot "Start-Treningshistorikk-GUI.pyw"
+          if (-not (Test-Path -LiteralPath $launcherSource -PathType Leaf)) {
+            throw "GUI launcher source not found: $launcherSource"
+          }
+
+          uv run --project $systemRoot --frozen --group build pyinstaller `
+            --clean --noconfirm --onedir --windowed `
+            --name SkiErgPortal `
+            --distpath (Join-Path $systemRoot "dist") `
+            --workpath (Join-Path $systemRoot "build/launcher/work") `
+            --specpath (Join-Path $systemRoot "build/launcher/spec") `
+            $launcherSource
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed to build the GUI launcher." }
 
       - name: Build Streamlit server
-        run: >-
-          uv run --project data/system --frozen --group build pyinstaller
-          --clean --noconfirm --onedir
-          --contents-directory .
-          --name streamlit_server
-          --distpath data/system/dist/SkiErgPortal
-          --workpath data/system/build/streamlit-server
-          --specpath data/system/build
-          --collect-all streamlit
-          --collect-all st_aggrid
-          --collect-all plotly
-          --collect-all PIL
-          --add-data "../treningshistorikk_app;app"
-          data/system/streamlit_server.py
+        shell: pwsh
+        run: |
+          $systemRoot = Join-Path $env:GITHUB_WORKSPACE "data/system"
+          $appSource = Join-Path $systemRoot "treningshistorikk_app"
+          $appScriptSource = Join-Path $appSource "app.py"
+          $serverSource = Join-Path $systemRoot "streamlit_server.py"
+          foreach ($source in @($appSource, $appScriptSource, $serverSource)) {
+            if (-not (Test-Path -LiteralPath $source)) {
+              throw "Streamlit build source not found: $source"
+            }
+          }
+
+          $appData = "${appSource};app"
+          uv run --project $systemRoot --frozen --group build pyinstaller `
+            --clean --noconfirm --onedir `
+            --contents-directory . `
+            --name streamlit_server `
+            --distpath (Join-Path $systemRoot "dist/SkiErgPortal") `
+            --workpath (Join-Path $systemRoot "build/server/work") `
+            --specpath (Join-Path $systemRoot "build/server/spec") `
+            --collect-all streamlit `
+            --collect-all st_aggrid `
+            --collect-all plotly `
+            --collect-all PIL `
+            --add-data $appData `
+            $serverSource
+          if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed to build the Streamlit server." }
 
       - name: Include usage instructions
         run: Copy-Item data/README.md data/system/dist/SkiErgPortal/README.md
@@ -57,33 +94,63 @@ jobs:
         shell: pwsh
         run: |
           $appRoot = (Resolve-Path data/system/dist/SkiErgPortal).Path
+          $launcherExe = Join-Path $appRoot "SkiErgPortal.exe"
+          $serverRoot = Join-Path $appRoot "streamlit_server"
+          $serverExe = Join-Path $serverRoot "streamlit_server.exe"
+          $appScript = Join-Path $serverRoot "app/app.py"
+          $streamlitStaticIndex = Join-Path $serverRoot "streamlit/static/index.html"
+          foreach ($requiredFile in @($launcherExe, $serverExe, $appScript, $streamlitStaticIndex)) {
+            if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+              throw "Expected packaged file is missing: $requiredFile"
+            }
+          }
           if (Test-Path (Join-Path $appRoot "Data")) {
             throw "Writable training data must not be packaged with the application."
           }
-          $env:SKIERGPORTAL_DATA_DIR = Join-Path $env:LOCALAPPDATA "SkiErgPortal\SmokeData"
-          New-Item -ItemType Directory -Force -Path $env:SKIERGPORTAL_DATA_DIR | Out-Null
-          & (Join-Path $appRoot "SkiErgPortal.exe") --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Packaged launcher smoke test failed." }
-
-          $serverExe = Join-Path $appRoot "streamlit_server\streamlit_server.exe"
           & $serverExe --version
           if ($LASTEXITCODE -ne 0) { throw "Packaged Streamlit CLI smoke test failed." }
-          $appScript = Join-Path $appRoot "streamlit_server\app\app.py"
+
+          $env:SKIERGPORTAL_DATA_DIR = Join-Path $env:LOCALAPPDATA "SkiErgPortal\SmokeData"
+          New-Item -ItemType Directory -Force -Path $env:SKIERGPORTAL_DATA_DIR | Out-Null
+          $smokeLog = Join-Path $env:TEMP "SkiErgPortal-launcher-smoke.log"
+          Remove-Item -LiteralPath $smokeLog -Force -ErrorAction SilentlyContinue
+          $env:SKIERGPORTAL_SMOKE_LOG = $smokeLog
+          & $launcherExe --smoke-test
+          $launcherExitCode = $LASTEXITCODE
+          Remove-Item Env:SKIERGPORTAL_SMOKE_LOG -ErrorAction SilentlyContinue
+          if ($launcherExitCode -ne 0) {
+            if (Test-Path -LiteralPath $smokeLog) { Get-Content -LiteralPath $smokeLog }
+            throw "Packaged launcher smoke test failed with exit code $launcherExitCode."
+          }
+
           $server = $null
+          $serverStdout = Join-Path $env:TEMP "SkiErgPortal-streamlit.stdout.log"
+          $serverStderr = Join-Path $env:TEMP "SkiErgPortal-streamlit.stderr.log"
+          Remove-Item -LiteralPath $serverStdout, $serverStderr -Force -ErrorAction SilentlyContinue
           try {
             $server = Start-Process -FilePath $serverExe -ArgumentList @(
               "run", $appScript, "--server.address", "127.0.0.1",
-              "--server.port", "8765", "--server.headless", "true"
-            ) -WorkingDirectory $env:SKIERGPORTAL_DATA_DIR -PassThru -WindowStyle Hidden
+              "--server.port", "8765", "--server.headless", "true",
+              "--global.developmentMode=false"
+            ) -WorkingDirectory $env:SKIERGPORTAL_DATA_DIR -PassThru -WindowStyle Hidden `
+              -RedirectStandardOutput $serverStdout -RedirectStandardError $serverStderr
             $ready = $false
             for ($attempt = 0; $attempt -lt 45; $attempt++) {
-              if ($server.HasExited) { throw "Packaged Streamlit server exited during startup." }
+              if ($server.HasExited) {
+                if (Test-Path -LiteralPath $serverStdout) { Get-Content -LiteralPath $serverStdout }
+                if (Test-Path -LiteralPath $serverStderr) { Get-Content -LiteralPath $serverStderr }
+                throw "Packaged Streamlit server exited during startup."
+              }
               try {
                 $response = Invoke-WebRequest -Uri "http://127.0.0.1:8765/_stcore/health" -TimeoutSec 2
                 if ($response.StatusCode -eq 200) { $ready = $true; break }
               } catch { Start-Sleep -Seconds 1 }
             }
-            if (-not $ready) { throw "Packaged Streamlit health endpoint did not become ready." }
+            if (-not $ready) {
+              if (Test-Path -LiteralPath $serverStdout) { Get-Content -LiteralPath $serverStdout }
+              if (Test-Path -LiteralPath $serverStderr) { Get-Content -LiteralPath $serverStderr }
+              throw "Packaged Streamlit health endpoint did not become ready."
+            }
           } finally {
             if ($server -and -not $server.HasExited) {
               Stop-Process -Id $server.Id -Force
