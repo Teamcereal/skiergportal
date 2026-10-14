@@ -9,6 +9,8 @@ system/Data/*
 # Python
 .venv/
 system/.venv/
+system/build/
+system/dist/
 __pycache__/
 *.pyc
 

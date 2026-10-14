@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
+import sysconfig
 import threading
 import webbrowser
 from pathlib import Path
@@ -14,14 +16,29 @@ except Exception as exc:  # pragma: no cover
     raise SystemExit(f"Tkinter mangler i Python-installasjonen: {exc}")
 
 
-ROOT = Path(__file__).resolve().parent
-VENV_PY = ROOT / ".venv" / "Scripts" / "python.exe"
-REQ = ROOT / "treningshistorikk_app" / "requirements.txt"
-APP = ROOT / "treningshistorikk_app" / "app.py"
-SECRETS_DIR = ROOT / ".streamlit"
-SECRETS_FILE = SECRETS_DIR / "secrets.toml"
+FROZEN = bool(getattr(sys, "frozen", False))
+ROOT = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
+if FROZEN:
+    VENV_PY = None
+    STREAMLIT_EXE = ROOT / "streamlit_server" / "streamlit_server.exe"
+    APP = ROOT / "streamlit_server" / "app" / "app.py"
+else:
+    VENV_PY = ROOT / ".venv" / "Scripts" / "python.exe"
+    STREAMLIT_EXE = None
+    APP = ROOT / "treningshistorikk_app" / "app.py"
 
-LOG_DIR = ROOT / "logs"
+if os.environ.get("LOCALAPPDATA"):
+    USER_DATA_ROOT = Path(os.environ["LOCALAPPDATA"])
+elif os.name == "nt":
+    USER_DATA_ROOT = Path.home() / "AppData" / "Local"
+else:
+    USER_DATA_ROOT = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+DATA_DIR = USER_DATA_ROOT / "SkiErgPortal" / "Data"
+LEGACY_DATA_DIR = ROOT / "Data"
+LEGACY_SECRETS_FILE = ROOT / ".streamlit" / "secrets.toml"
+SECRETS_FILE = DATA_DIR / "secrets.toml"
+
+LOG_DIR = DATA_DIR / "logs"
 LOG_FILE = LOG_DIR / "streamlit.log"
 
 URL = "http://localhost:8501"
@@ -65,6 +82,10 @@ def _draw_logo(canvas: tk.Canvas, *, accent: str, fg: str, bg: str) -> None:
 
 
 def read_saved_token() -> str:
+    try:
+        prepare_user_data_dir()
+    except OSError:
+        return ""
     if not SECRETS_FILE.exists():
         return ""
     try:
@@ -84,11 +105,38 @@ def read_saved_token() -> str:
 
 
 def save_token(token: str) -> None:
-    SECRETS_DIR.mkdir(parents=True, exist_ok=True)
+    prepare_user_data_dir()
     SECRETS_FILE.write_text(f'CONCEPT2_ACCESS_TOKEN="{token}"\n', encoding="utf-8")
 
 
+def prepare_user_data_dir() -> Path:
+    already_exists = DATA_DIR.exists()
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if not already_exists and LEGACY_DATA_DIR.is_dir():
+        shutil.copytree(
+            LEGACY_DATA_DIR,
+            DATA_DIR,
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns(".gitignore", "README.md"),
+        )
+    if not SECRETS_FILE.exists() and LEGACY_SECRETS_FILE.is_file():
+        shutil.copy2(LEGACY_SECRETS_FILE, SECRETS_FILE)
+    return DATA_DIR
+
+
+def _find_uv_executable() -> Path | None:
+    uv_path = shutil.which("uv")
+    if uv_path:
+        return Path(uv_path)
+    scheme = "nt_user" if os.name == "nt" else "posix_user"
+    executable = "uv.exe" if os.name == "nt" else "uv"
+    user_uv = Path(sysconfig.get_path("scripts", scheme)) / executable
+    return user_uv if user_uv.is_file() else None
+
+
 def ensure_venv_and_deps(status_cb) -> None:
+    if VENV_PY is None:
+        raise RuntimeError("Den frosne appen skal bruke den pakkede Streamlit-serveren.")
     if not VENV_PY.exists():
         status_cb("Oppretter .venv …")
         subprocess.check_call(
@@ -97,16 +145,23 @@ def ensure_venv_and_deps(status_cb) -> None:
             creationflags=CREATE_NO_WINDOW,
         )
 
-    status_cb("Installerer avhengigheter …")
+    uv_exe = _find_uv_executable()
+    if uv_exe is None:
+        status_cb("Installerer uv …")
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "--user", "uv"],
+            cwd=str(ROOT),
+            creationflags=CREATE_NO_WINDOW,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        uv_exe = _find_uv_executable()
+    if uv_exe is None:
+        raise RuntimeError("Fant ikke uv etter installasjon. Installer uv fra https://docs.astral.sh/uv/.")
+
+    status_cb("Synkroniserer avhengigheter …")
     subprocess.check_call(
-        [str(VENV_PY), "-m", "pip", "install", "--upgrade", "pip"],
-        cwd=str(ROOT),
-        creationflags=CREATE_NO_WINDOW,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    subprocess.check_call(
-        [str(VENV_PY), "-m", "pip", "install", "-r", str(REQ)],
+        [str(uv_exe), "sync", "--project", str(ROOT), "--frozen", "--python", str(VENV_PY)],
         cwd=str(ROOT),
         creationflags=CREATE_NO_WINDOW,
         stdout=subprocess.DEVNULL,
@@ -123,7 +178,7 @@ def kill_orphaned_streamlit() -> None:
 
     ps = (
         "Get-CimInstance Win32_Process | "
-        "Where-Object { $_.CommandLine -and $_.CommandLine -match 'streamlit run' -and $_.CommandLine -match 'treningshistorikk_app\\\\app\\.py' } | "
+        "Where-Object { $_.CommandLine -and $_.CommandLine -match 'streamlit(_server\\.exe)? run' -and $_.CommandLine -match 'SkiErgPortal|treningshistorikk_app' -and $_.CommandLine -match 'app\\.py' } | "
         "Select-Object -ExpandProperty ProcessId"
     )
     try:
@@ -351,26 +406,30 @@ class Launcher(tk.Tk):
         def worker() -> None:
             try:
                 kill_orphaned_streamlit()
-                ensure_venv_and_deps(self.set_status)
+                data_dir = prepare_user_data_dir()
+                if not FROZEN:
+                    ensure_venv_and_deps(self.set_status)
                 self.set_status("Starter UI …")
 
                 env = os.environ.copy()
+                env["SKIERGPORTAL_DATA_DIR"] = str(data_dir)
                 if token:
                     env["CONCEPT2_ACCESS_TOKEN"] = token
 
-                cmd = [
-                    str(VENV_PY),
-                    "-m",
-                    "streamlit",
-                    "run",
-                    str(APP),
-                    "--server.address",
-                    "localhost",
-                    "--server.port",
-                    "8501",
-                    "--server.headless",
-                    "true",
-                ]
+                if FROZEN:
+                    cmd = [str(STREAMLIT_EXE), "run", str(APP)]
+                else:
+                    cmd = [str(VENV_PY), "-m", "streamlit", "run", str(APP)]
+                cmd.extend(
+                    [
+                        "--server.address",
+                        "localhost",
+                        "--server.port",
+                        "8501",
+                        "--server.headless",
+                        "true",
+                    ]
+                )
 
                 LOG_DIR.mkdir(parents=True, exist_ok=True)
                 self.log_fp = open(LOG_FILE, "a", encoding="utf-8", errors="replace")
@@ -380,7 +439,7 @@ class Launcher(tk.Tk):
 
                 self.proc = subprocess.Popen(
                     cmd,
-                    cwd=str(ROOT),
+                    cwd=str(data_dir if FROZEN else ROOT),
                     env=env,
                     creationflags=CREATE_NO_WINDOW,
                     stdout=self.log_fp,
@@ -454,5 +513,22 @@ class Launcher(tk.Tk):
         self.destroy()
 
 
+def smoke_test() -> int:
+    if not FROZEN:
+        raise SystemExit("--smoke-test is only available in the packaged application.")
+    missing = [path for path in (STREAMLIT_EXE, APP) if path is None or not path.is_file()]
+    if missing:
+        raise SystemExit("Packaged runtime files are missing: " + ", ".join(str(path) for path in missing))
+    data_dir = prepare_user_data_dir()
+    if data_dir == ROOT or ROOT in data_dir.parents:
+        raise SystemExit("User data must be stored outside the application directory.")
+    probe = data_dir / ".packaging-smoke-test"
+    probe.write_text("ok", encoding="utf-8")
+    probe.unlink()
+    return 0
+
+
 if __name__ == "__main__":
+    if "--smoke-test" in sys.argv:
+        raise SystemExit(smoke_test())
     Launcher().mainloop()

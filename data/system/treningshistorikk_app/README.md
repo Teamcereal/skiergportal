@@ -4,7 +4,7 @@ Lokal Streamlit-portal for analyse av Concept2 SkiErg-økter. Appen kan lese lok
 
 ## Status
 
-Dette er en lokal Python-app, ikke en pakket Windows-app. Se [prosjektets hovedguide](../../README.md) for installasjon, oppstart og personvern.
+Dette er en lokal Python-app med en separat PyInstaller-distribusjon for Windows. Se [prosjektets hovedguide](../../README.md) for installasjon, oppstart og personvern.
 
 Portalen inneholder blant annet:
 
@@ -17,41 +17,39 @@ Portalen inneholder blant annet:
 
 ### Start via launcher
 
-Kjør [Treningshistorikk.cmd](../../Treningshistorikk.cmd) fra rotmappen. Launcheren kan opprette `system/.venv` og installere avhengigheter første gang.
+Kjør [startfilen](../../../Trykk%20her%20for%20%C3%A5%20starte%20skiergportal.cmd) fra rotmappen. Launcheren oppretter `data/system/.venv` og synkroniserer avhengighetene med uv første gang.
 
 ### Start fra terminal
 
 Fra `system/`:
 
 ```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r treningshistorikk_app/requirements.txt
-streamlit run treningshistorikk_app/app.py
+uv sync --frozen
+uv run --frozen streamlit run treningshistorikk_app/app.py
 ```
 
-Appen åpner normalt på `http://127.0.0.1:8501` og finner `system/Data/` automatisk.
+Appen åpner normalt på `http://127.0.0.1:8501`. Direkte terminaloppstart finner `data/system/Data/`; oppstart via launcheren bruker `%LOCALAPPDATA%\SkiErgPortal\Data\`.
 
 ## Datakilder
 
 ### Lokale CSV-filer
 
-Legg Concept2 Logbook CSV-eksporter med navnet `concept2-season-*.csv` i `system/Data/`. Velg **CSV (system/Data)** i sidepanelet. Alle sesongfilene leses samtidig; avgrens deretter med portalfiltrene.
+Legg Concept2 Logbook CSV-eksporter med navnet `concept2-season-*.csv` i appens aktive datamappe. Via launcheren er dette `%LOCALAPPDATA%\SkiErgPortal\Data\`; direkte terminaloppstart bruker `data/system/Data/`. Velg **CSV (system/Data)** i sidepanelet. Alle sesongfilene leses samtidig; avgrens deretter med portalfiltrene.
 
-CSV-filer kan lastes opp for den aktive nettleserøkten. Opplastede filer lagres ikke automatisk i `system/Data/`.
+CSV-filer kan lastes opp for den aktive nettleserøkten. Opplastede filer lagres ikke automatisk i datamappen.
 
 ### Concept2 API
 
 Velg **Concept2 API** i sidepanelet og legg inn en personlig, read-only access token. Tokenet blir ikke forhåndsutfylt eller lagret av portalen.
 
-API-resultater mellomlagres lokalt i `system/Data/api_cache_skierg.json` for raskere senere oppstart.
+API-resultater mellomlagres lokalt i `api_cache_skierg.json` i datamappen for raskere senere oppstart.
 
 ## Lokal data og personvern
 
-Lokale CSV-filer, API-cache, innstillinger, kommentarer, tagger, laktat og vektdata ligger under `system/Data/`. Ikke commit private data eller token til Git.
+Lokale CSV-filer, API-cache, innstillinger, kommentarer, tagger, laktat og vektdata ligger i datamappen. Via launcheren lagres disse utenfor appinstallasjonen, slik at de overlever oppgraderinger. Ikke commit private data eller token til Git.
 
 Ikke lagre token i kode, Streamlit-konfigurasjon eller filer som deles. Tokenet oppgis manuelt for den aktive portaløkten.
 
 ## Avhengigheter
 
-Avhengigheter er definert i [requirements.txt](requirements.txt). De viktigste er Streamlit, pandas, Plotly, NumPy, requests, Pillow og `streamlit-aggrid`.
+Runtime-avhengigheter er definert i [`pyproject.toml`](../pyproject.toml) og lases fra `uv.lock`. De viktigste er Streamlit, pandas, Plotly, NumPy, requests, Pillow og `streamlit-aggrid`.
