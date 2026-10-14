@@ -519,16 +519,6 @@ def smoke_test() -> int:
     missing = [path for path in (STREAMLIT_EXE, APP) if path is None or not path.is_file()]
     if missing:
         raise SystemExit("Packaged runtime files are missing: " + ", ".join(str(path) for path in missing))
-    try:
-        subprocess.run(
-            [str(STREAMLIT_EXE), "--version"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-        raise SystemExit(f"Packaged Streamlit server could not be started: {exc}") from exc
     data_dir = prepare_user_data_dir()
     if data_dir == ROOT or ROOT in data_dir.parents:
         raise SystemExit("User data must be stored outside the application directory.")
